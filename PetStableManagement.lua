@@ -11,7 +11,7 @@ local C_Timer = _G.C_Timer
 local hooksecurefunc = _G.hooksecurefunc
 local C_StableInfo = _G.C_StableInfo
 
-local addonName = "PetDuplicateDetector"
+local addonName = "PetStableManagement"
 
 local panel, scrollFrame, content
 local rows = {}
@@ -20,7 +20,7 @@ local sortByDisplayID = false
 local sortBySlot = false
 local ROW_HEIGHT = 90
 local exoticFilter = false
-local duplicatesOnlyFilter = false  -- NEW: Filter for duplicates only
+local duplicatesOnlyFilter = false
 local selectedSpecs = {}
 local selectedFamilies = {}
 local specList = {}
@@ -37,7 +37,7 @@ local function EnsureRow(i)
 
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetAllPoints()
-    row.bg:SetColorTexture(0, 0, 0, 0.25)
+    row.bg:SetColorTexture(0, 0, 0, 1)
 
     row.model = CreateFrame("PlayerModel", nil, row)
     row.model:SetSize(90, 90)
@@ -56,7 +56,7 @@ local function EnsureRow(i)
     row.text:SetWidth(300)
 
     row.makeActive = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.makeActive:SetSize(90, 22)
+    row.makeActive:SetSize(80, 22)
     row.makeActive:SetPoint("RIGHT", row, "RIGHT", -90, 5)
     row.makeActive:SetText("Make Active")
     row.makeActive:Hide()
@@ -68,13 +68,13 @@ local function EnsureRow(i)
     row.companion:Hide()
     
     row.stable = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.stable:SetSize(60, 22)
+    row.stable:SetSize(80, 22)
     row.stable:SetPoint("RIGHT", row, "RIGHT", -90, -20)
     row.stable:SetText("Stable")
     row.stable:Hide()
 
     row.release = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.release:SetSize(60, 22)
+    row.release:SetSize(80, 22)
     row.release:SetPoint("RIGHT", row, "RIGHT", -10, -20)
     row.release:SetText("Release")
     row.release:Hide()
@@ -193,7 +193,7 @@ local function RenderPanel()
 
     local pets = CopyTable(stablePets)
 
-    -- NEW: First pass - identify duplicates by grouping
+    -- First pass - identify duplicates by grouping
     local duplicateKeys = {}
     if duplicatesOnlyFilter then
         local groups = {}
@@ -217,7 +217,7 @@ local function RenderPanel()
         if next(selectedSpecs) and not selectedSpecs[pet.specName] then return true end
         if next(selectedFamilies) and not selectedFamilies[pet.familyName] then return true end
         
-        -- NEW: Check if we should filter to duplicates only
+        -- Check if we should filter to duplicates only
         if duplicatesOnlyFilter then
             local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
             if not duplicateKeys[key] then return true end
@@ -253,30 +253,27 @@ local function RenderPanel()
 
     -- Group pets by icon+displayID for duplicate detection
     local groups = {}
-    local duplicateCount = 0
     for _, pet in ipairs(filteredPets) do
         local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
         groups[key] = groups[key] or {}
         table.insert(groups[key], pet)
-        if #groups[key] == 2 then
-            duplicateCount = duplicateCount + 1
+    end
+    
+    -- Calculate statistics
+    local totalFiltered = #filteredPets
+    local duplicatePets = 0
+    local duplicateGroups = 0
+    for _, group in pairs(groups) do
+        if #group > 1 then
+            duplicateGroups = duplicateGroups + 1
+            duplicatePets = duplicatePets + #group
         end
     end
     
-    -- Update summary text
-    if panel and panel.summary then
-        local dupGroups = 0
-        for _, group in pairs(groups) do
-            if #group > 1 then
-                dupGroups = dupGroups + 1
-            end
-        end
-        if dupGroups > 0 then
-            panel.summary:SetText(string.format("⚠ Found %d duplicate groups ⚠", dupGroups))
-        else
-            panel.summary:SetText("✓ No duplicates found")
-            panel.summary:SetTextColor(1, 1, 1)
-        end
+    -- Update statistics at bottom
+    if panel and panel.statsText then
+        panel.statsText:SetText(string.format("Showing: %d pets  |  Duplicates: %d pets (%d groups)", 
+            totalFiltered, duplicatePets, duplicateGroups))
     end
 
     -- Determine number of columns based on content width
@@ -456,19 +453,6 @@ end
 -- Build panel
 ------------------------------------------------------------
 local function BuildPanel()
-    -- Dynamically resize content and rows when the panel is resized (set after all objects are created)
-    -- Handler is set after panel, scrollFrame, and content are created
-    -- ...existing code...
-    -- After creating panel, scrollFrame, and content:
-    if panel and scrollFrame and content then
-        panel:SetScript("OnSizeChanged", function(self, width, height)
-            if not scrollFrame or not content then return end
-            scrollFrame:SetWidth(width - 20)
-            content:SetWidth(scrollFrame:GetWidth() - 10)
-            -- Re-render panel to update columns
-            RenderPanel()
-        end)
-    end
     if panel then 
         return -- Panel already exists
     end
@@ -478,9 +462,12 @@ local function BuildPanel()
         return
     end
     
-    panel = CreateFrame("Frame", "PetDuplicateDetectorPanel", StableFrame)
+    panel = CreateFrame("Frame", "PetStableManagementPanel", UIParent)
     panel:SetSize(500, 640)
     panel:SetPoint("TOPLEFT", StableFrame, "TOPRIGHT", 0, 0)
+    panel:SetFrameStrata("FULLSCREEN_DIALOG")
+    panel:SetFrameLevel(1000)
+    panel:SetToplevel(true)
     panel:SetMovable(true)
     panel:EnableMouse(true)
     panel:RegisterForDrag("LeftButton")
@@ -507,33 +494,30 @@ local function BuildPanel()
             self:GetParent():StopMovingOrSizing()
         end)
     end
-    
+
     -- Background
     panel.border = CreateFrame("Frame", nil, panel, "BackdropTemplate")
     panel.border:SetAllPoints()
     panel.border:SetBackdrop({
         bgFile="Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",
-        tile=true, tileSize=30, edgeSize=16,
+        tile=true, tileSize=30, edgeSize=5,
         insets={left=4,right=4,top=4,bottom=4}
     })
-    panel.border:SetBackdropColor(0,0,0,0.25)
+    panel.border:SetBackdropColor(0,0,0,0.7)
+    panel.border:SetFrameLevel(panel:GetFrameLevel() - 1)
 
-    -- Title (centered at top)
+    -- Title (centered at top) - created after border so it renders on top
     panel.title = panel:CreateFontString(nil,"OVERLAY","GameFontNormalLarge")
     panel.title:SetPoint("TOP", panel, "TOP", 0, -10)
-    panel.title:SetText("Pet Duplicate Detector")
-    
-    -- Summary text (centered below title)
-    panel.summary = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    panel.summary:SetPoint("TOP", panel.title, "BOTTOM", 0, -8)
-    panel.summary:SetText("")
-    panel.summary:SetTextColor(1, 1, 1)
+    panel.title:SetText("Pet Stable Management")
+    panel.title:SetTextColor(1, 0.82, 0)
+    panel.title:SetDrawLayer("OVERLAY", 7)
 
-    -- Search box (centered below summary)
+    -- Search box (centered below title)
     panel.searchBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
     panel.searchBox:SetSize(130, 22)
-    panel.searchBox:SetPoint("TOP", panel.summary, "BOTTOM", 0, -15)
+    panel.searchBox:SetPoint("TOP", panel.title, "BOTTOM", 0, -15)
     panel.searchBox:SetAutoFocus(false)
     panel.searchBox:SetText("")
     panel.searchBox:SetScript("OnTextChanged", function()
@@ -541,7 +525,7 @@ local function BuildPanel()
     end)
     
     local searchLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    searchLabel:SetPoint("BOTTOM", panel.searchBox, "TOP", 0, 5)
+    searchLabel:SetPoint("BOTTOM", panel.searchBox, "TOP", 0, 1)
     searchLabel:SetText("Search:")
 
     -- Exotic filter checkbox 
@@ -568,11 +552,10 @@ local function BuildPanel()
     end)
     panel.duplicatesCheck:SetChecked(duplicatesOnlyFilter)
 
--- Spec dropdown
+    -- Spec dropdown
     panel.specDrop = CreateFrame("Frame", "PetDupSpecDrop", panel, "UIDropDownMenuTemplate")
     panel.specDrop:SetPoint("TOPLEFT", panel.exoticCheck, "BOTTOMLEFT", -15, -5)
     UIDropDownMenu_SetWidth(panel.specDrop, 100)
-    -- Fix text alignment - align to left
     _G[panel.specDrop:GetName().."Text"]:SetJustifyH("LEFT")
     UIDropDownMenu_Initialize(panel.specDrop, function(self, level)
         local info = UIDropDownMenu_CreateInfo()
@@ -587,12 +570,12 @@ local function BuildPanel()
         UIDropDownMenu_AddButton(info)
         for _, spec in ipairs(specList) do
             local info = UIDropDownMenu_CreateInfo()
-            info.text = "  " .. spec  -- Add spacing before text
+            info.text = "  " .. spec
             info.value = spec
             info.checked = selectedSpecs[spec] or false
             info.keepShownOnClick = true
-            info.isNotRadio = true  -- Use checkboxes instead of radio buttons
-            info.minWidth = 60  -- Control dropdown menu width
+            info.isNotRadio = true
+            info.minWidth = 60
             info.func = function(_, _, _, checked)
                 if checked then
                     selectedSpecs[spec] = true
@@ -619,7 +602,7 @@ local function BuildPanel()
         UIDropDownMenu_SetText(panel.specDrop, table.concat(t, ", "))
     end
 
-        -- Family dropdown
+    -- Family dropdown
     panel.familyDrop = CreateFrame("Frame", "PetDupFamilyDrop", panel, "UIDropDownMenuTemplate")
     panel.familyDrop:SetPoint("TOPLEFT", panel.duplicatesCheck, "BOTTOMLEFT", -15, -5)
     UIDropDownMenu_SetWidth(panel.familyDrop, 100)
@@ -672,7 +655,7 @@ local function BuildPanel()
     -- Sort by Slot button (right side, aligned with exotic checkbox)
     panel.sortSlotButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.sortSlotButton:SetSize(130, 22)
-    panel.sortSlotButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -85)
+    panel.sortSlotButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -35, -85)
     panel.sortSlotButton:SetText("Sort by Slot")
     panel.sortSlotButton:SetScript("OnClick", function()
         sortBySlot = not sortBySlot
@@ -694,12 +677,29 @@ local function BuildPanel()
     -- Create the scroll frame (moved down to give more space for filters)
     scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -150)
-    scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 10)
+    scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 35)  -- Leave space for stats
     
     -- Create the content frame
     content = CreateFrame("Frame", nil, scrollFrame)
     content:SetSize(scrollFrame:GetWidth() - 10, 500)
     scrollFrame:SetScrollChild(content)
+    
+    -- Statistics text at bottom
+    panel.statsText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    panel.statsText:SetPoint("BOTTOM", panel, "BOTTOM", 0, 10)
+    panel.statsText:SetText("Showing: 0 pets  |  Duplicates: 0 pets (0 groups)")
+    panel.statsText:SetTextColor(1, 0.82, 0)  -- Bright yellow
+    panel.statsText:SetDrawLayer("OVERLAY", 7)
+    
+    -- Dynamically resize content and rows when the panel is resized
+    panel:SetScript("OnSizeChanged", function(self, width, height)
+        if not scrollFrame or not content then return end
+        scrollFrame:SetWidth(width - 20)
+        scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 35)
+        content:SetWidth(scrollFrame:GetWidth() - 10)
+        -- Re-render panel to update columns
+        RenderPanel()
+    end)
 end
 
 ------------------------------------------------------------
