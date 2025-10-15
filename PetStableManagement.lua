@@ -6,19 +6,33 @@ local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth
 local UIDropDownMenu_GetSelectedValue = _G.UIDropDownMenu_GetSelectedValue
 local UIDropDownMenu_SetSelectedValue = _G.UIDropDownMenu_SetSelectedValue
 local UIDropDownMenu_AddButton = _G.UIDropDownMenu_AddButton
+local UIDropDownMenu_CreateInfo = _G.UIDropDownMenu_CreateInfo
+local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText
 local CopyTable = _G.CopyTable
 local C_Timer = _G.C_Timer
 local hooksecurefunc = _G.hooksecurefunc
 local C_StableInfo = _G.C_StableInfo
+local C_Spell = _G.C_Spell
+local GetSpellInfo = _G.GetSpellInfo
 
 local addonName = "PetStableManagement"
+
+-- Helper function to get spell name (compatible with both old and new API)
+local function GetSpellNameCompat(spellID)
+    if C_Spell and C_Spell.GetSpellName then
+        return C_Spell.GetSpellName(spellID)
+    elseif GetSpellInfo then
+        return GetSpellInfo(spellID)
+    end
+    return nil
+end
 
 local panel, scrollFrame, content
 local rows = {}
 local stablePets = {}
 local sortByDisplayID = false
 local sortBySlot = false
-local ROW_HEIGHT = 90
+local ROW_HEIGHT = 120  -- Increased to fit 7 lines of abilities
 local exoticFilter = false
 local duplicatesOnlyFilter = false
 local selectedSpecs = {}
@@ -49,33 +63,48 @@ local function EnsureRow(i)
     row.icon:SetSize(60, 60)
     row.icon:SetPoint("LEFT", row, "LEFT", 2, 0)
 
+    -- Main pet info text (left side)
     row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.text:SetPoint("LEFT", row.model, "RIGHT", 6, 0)
+    row.text:SetPoint("TOPLEFT", row.model, "TOPRIGHT", 6, 0)
     row.text:SetJustifyH("LEFT")
     row.text:SetJustifyV("TOP")
-    row.text:SetWidth(300)
+    row.text:SetWidth(180)
 
+    -- Abilities section (right side of pet info)
+    row.abilitiesHeader = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.abilitiesHeader:SetPoint("TOPLEFT", row.text, "TOPRIGHT", 10, 0)
+    row.abilitiesHeader:SetText("|cFFFFD700Abilities:|r")
+    row.abilitiesHeader:SetJustifyH("LEFT")
+    row.abilitiesHeader:SetWidth(150)
+
+    row.abilitiesList = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.abilitiesList:SetPoint("TOPLEFT", row.abilitiesHeader, "BOTTOMLEFT", 0, -2)
+    row.abilitiesList:SetWidth(150)
+    row.abilitiesList:SetJustifyH("LEFT")
+    row.abilitiesList:SetJustifyV("TOP")
+
+    -- Buttons (far right)
     row.makeActive = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     row.makeActive:SetSize(80, 22)
-    row.makeActive:SetPoint("RIGHT", row, "RIGHT", -90, 5)
+    row.makeActive:SetPoint("TOPRIGHT", row, "TOPRIGHT", -10, -5)
     row.makeActive:SetText("Make Active")
     row.makeActive:Hide()
     
     row.companion = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     row.companion:SetSize(80, 22)
-    row.companion:SetPoint("RIGHT", row, "RIGHT", -10, 5)
+    row.companion:SetPoint("TOPRIGHT", row.makeActive, "BOTTOMRIGHT", 0, -3)
     row.companion:SetText("Companion")
     row.companion:Hide()
     
     row.stable = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     row.stable:SetSize(80, 22)
-    row.stable:SetPoint("RIGHT", row, "RIGHT", -90, -20)
+    row.stable:SetPoint("TOPRIGHT", row.companion, "BOTTOMRIGHT", 0, -3)
     row.stable:SetText("Stable")
     row.stable:Hide()
 
     row.release = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     row.release:SetSize(80, 22)
-    row.release:SetPoint("RIGHT", row, "RIGHT", -10, -20)
+    row.release:SetPoint("TOPRIGHT", row.stable, "BOTTOMRIGHT", 0, -3)
     row.release:SetText("Release")
     row.release:Hide()
 
@@ -103,6 +132,37 @@ local function CollectStablePets()
                 local familyName = petInfo.familyName or (petInfo.family and petInfo.family.name) or petInfo.type or nil
                 local specName = petInfo.specialization or petInfo.specName or (petInfo.spec and petInfo.spec.name) or petInfo.Specialization or (petInfo.Specialization and petInfo.Specialization.name) or nil
                 local specID = petInfo.specID or petInfo.specId or nil
+                
+                -- Extract abilities - they are stored as spell IDs
+                local abilities = {}
+                local abilitySet = {}  -- Track duplicates
+                local abilityFields = {"petAbilities", "specAbilities", "abilities", "specialAbilities", "Abilities", "SpecialAbilities"}
+                for _, fieldName in ipairs(abilityFields) do
+                    if petInfo[fieldName] and type(petInfo[fieldName]) == "table" then
+                        for _, ability in ipairs(petInfo[fieldName]) do
+                            if type(ability) == "number" then
+                                -- It's a spell ID, convert to spell name
+                                local spellName = GetSpellNameCompat(ability)
+                                if spellName and not abilitySet[spellName] then
+                                    table.insert(abilities, spellName)
+                                    abilitySet[spellName] = true
+                                end
+                            elseif type(ability) == "string" then
+                                if not abilitySet[ability] then
+                                    table.insert(abilities, ability)
+                                    abilitySet[ability] = true
+                                end
+                            elseif type(ability) == "table" then
+                                local name = ability.name or ability.Name
+                                if name and not abilitySet[name] then
+                                    table.insert(abilities, name)
+                                    abilitySet[name] = true
+                                end
+                            end
+                        end
+                    end
+                end
+                
                 table.insert(stablePets, {
                     slotID = slot,
                     name = petInfo.name,
@@ -115,6 +175,7 @@ local function CollectStablePets()
                     specID = specID,
                     isExotic = (petInfo.isExotic or petInfo.Exotic) and true or false,
                     isActive = true,
+                    abilities = abilities,
                 })
             end
         end
@@ -161,6 +222,38 @@ local function CollectStablePets()
                     else
                         d.isExotic = d.isExotic and true or false
                     end
+                    
+                    -- Extract abilities for stabled pets - they are stored as spell IDs
+                    local abilities = {}
+                    local abilitySet = {}  -- Track duplicates
+                    local abilityFields = {"petAbilities", "specAbilities", "abilities", "specialAbilities", "Abilities", "SpecialAbilities"}
+                    for _, fieldName in ipairs(abilityFields) do
+                        if d[fieldName] and type(d[fieldName]) == "table" then
+                            for _, ability in ipairs(d[fieldName]) do
+                                if type(ability) == "number" then
+                                    -- It's a spell ID, convert to spell name
+                                    local spellName = GetSpellNameCompat(ability)
+                                    if spellName and not abilitySet[spellName] then
+                                        table.insert(abilities, spellName)
+                                        abilitySet[spellName] = true
+                                    end
+                                elseif type(ability) == "string" then
+                                    if not abilitySet[ability] then
+                                        table.insert(abilities, ability)
+                                        abilitySet[ability] = true
+                                    end
+                                elseif type(ability) == "table" then
+                                    local name = ability.name or ability.Name
+                                    if name and not abilitySet[name] then
+                                        table.insert(abilities, name)
+                                        abilitySet[name] = true
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    d.abilities = abilities
+                    
                     table.insert(stablePets, d)
                 end
             end, false)
@@ -184,25 +277,26 @@ end
 -- Render panel rows
 ------------------------------------------------------------
 local function RenderPanel()
-    local searchText = panel.searchBox and panel.searchBox:GetText() or ""
-    local searchLower = searchText:lower():gsub("^%s+", ""):gsub("%s+$", "")
     if not panel or not content then
         print("|cFFFF0000RenderPanel: panel or content is nil!|r")
         return
     end
 
-    local pets = CopyTable(stablePets)
+    -- Normalize search text
+    local searchText = panel.searchBox and panel.searchBox:GetText() or ""
+    local searchLower = searchText:lower():gsub("^%s+", ""):gsub("%s+$", "")
 
-    -- First pass - identify duplicates by grouping
+    -- Build duplicate groups
+    local groups = {}
+    for _, pet in ipairs(stablePets) do
+        local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
+        groups[key] = groups[key] or {}
+        table.insert(groups[key], pet)
+    end
+
+    -- Build duplicateKeys if filter is active
     local duplicateKeys = {}
     if duplicatesOnlyFilter then
-        local groups = {}
-        for _, pet in ipairs(pets) do
-            local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
-            groups[key] = groups[key] or {}
-            table.insert(groups[key], pet)
-        end
-        -- Mark keys that have duplicates
         for key, group in pairs(groups) do
             if #group > 1 then
                 duplicateKeys[key] = true
@@ -210,37 +304,49 @@ local function RenderPanel()
         end
     end
 
-    -- Apply filters: exotic, spec, family, duplicates, and search
+    -- Filter pets
     local filteredPets = {}
-    local function should_skip(pet)
-        if exoticFilter and not pet.isExotic then return true end
-        if next(selectedSpecs) and not selectedSpecs[pet.specName] then return true end
-        if next(selectedFamilies) and not selectedFamilies[pet.familyName] then return true end
-        
-        -- Check if we should filter to duplicates only
-        if duplicatesOnlyFilter then
+    for _, pet in ipairs(stablePets) do
+        local skip = false
+
+        if exoticFilter and not pet.isExotic then skip = true end
+        if not skip and next(selectedSpecs) and not selectedSpecs[pet.specName] then skip = true end
+        if not skip and next(selectedFamilies) and not selectedFamilies[pet.familyName] then skip = true end
+        if not skip and duplicatesOnlyFilter then
             local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
-            if not duplicateKeys[key] then return true end
+            if not duplicateKeys[key] then skip = true end
         end
-        
-        if searchLower ~= "" then
+        if not skip and searchLower ~= "" then
             local match = false
-            if pet.name and pet.name:lower():find(searchLower, 1, true) then match = true end
-            if not match and pet.familyName and tostring(pet.familyName):lower():find(searchLower, 1, true) then match = true end
-            if not match and pet.specName and tostring(pet.specName):lower():find(searchLower, 1, true) then match = true end
-            if not match and pet.specialization and tostring(pet.specialization):lower():find(searchLower, 1, true) then match = true end
-            if not match and pet.specID and tostring(pet.specID):find(searchLower, 1, true) then match = true end
-            if not match and pet.displayID and tostring(pet.displayID):find(searchLower, 1, true) then match = true end
-            if not match then return true end
+            local fields = {
+                pet.name, pet.familyName, pet.specName,
+                pet.specialization, tostring(pet.specID or ""), tostring(pet.displayID or "")
+            }
+            for _, field in ipairs(fields) do
+                if field and tostring(field):lower():find(searchLower, 1, true) then
+                    match = true
+                    break
+                end
+            end
+            -- Search in abilities
+            if not match and pet.abilities and type(pet.abilities) == "table" then
+                for _, ability in ipairs(pet.abilities) do
+                    local abilityStr = type(ability) == "table" and ability.name or tostring(ability)
+                    if abilityStr and abilityStr:lower():find(searchLower, 1, true) then
+                        match = true
+                        break
+                    end
+                end
+            end
+            if not match then skip = true end
         end
-        return false
-    end
-    for _, pet in ipairs(pets) do
-        if not should_skip(pet) then
+
+        if not skip then
             table.insert(filteredPets, pet)
         end
     end
 
+    -- Sort pets
     if sortByDisplayID then
         table.sort(filteredPets, function(a, b)
             return (a.displayID or 0) < (b.displayID or 0)
@@ -251,52 +357,40 @@ local function RenderPanel()
         end)
     end
 
-    -- Group pets by icon+displayID for duplicate detection
-    local groups = {}
-    for _, pet in ipairs(filteredPets) do
-        local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
-        groups[key] = groups[key] or {}
-        table.insert(groups[key], pet)
-    end
-    
-    -- Calculate statistics
+    -- Update stats
     local totalFiltered = #filteredPets
-    local duplicatePets = 0
-    local duplicateGroups = 0
+    local duplicatePets, duplicateGroups = 0, 0
     for _, group in pairs(groups) do
         if #group > 1 then
             duplicateGroups = duplicateGroups + 1
             duplicatePets = duplicatePets + #group
         end
     end
-    
-    -- Update statistics at bottom
-    if panel and panel.statsText then
-        panel.statsText:SetText(string.format("Showing: %d pets  |  Duplicates: %d pets (%d groups)", 
+    if panel.statsText then
+        panel.statsText:SetText(string.format("Showing: %d pets  |  Duplicates: %d pets (%d groups)",
             totalFiltered, duplicatePets, duplicateGroups))
     end
 
-    -- Determine number of columns based on content width
+    -- Layout
     local contentWidth = content:GetWidth() or 470
-    local minRowWidth = 350
-    local colCount = 1
-    if contentWidth > minRowWidth * 2 + 20 then
-        colCount = 2
-    end
+    local desiredColWidth = 400
+    local colCount = math.max(1, math.floor((contentWidth + 8) / (desiredColWidth + 8)))
     local colWidth = math.floor((contentWidth - 8 * (colCount - 1)) / colCount)
+    colWidth = math.max(colWidth, 220)
+    local rowTotal = math.ceil(totalFiltered / colCount)
 
     for i, pet in ipairs(filteredPets) do
         local row = EnsureRow(i)
         row:ClearAllPoints()
-        local col = ((i - 1) % colCount)
-        local rowIdx = math.floor((i - 1) / colCount)
+        local rowIdx = ((i - 1) % rowTotal)
+        local col = math.floor((i - 1) / rowTotal)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 4 + col * (colWidth + 8), -(rowIdx) * ROW_HEIGHT)
         row:SetWidth(colWidth)
-        if row.text then
-            row.text:SetWidth(colWidth - 170)
-        end
+        if row.text then row.text:SetWidth(math.min(180, colWidth - 350)) end
+        if row.abilitiesHeader then row.abilitiesHeader:SetWidth(math.min(150, colWidth - 280)) end
+        if row.abilitiesList then row.abilitiesList:SetWidth(math.min(150, colWidth - 280)) end
 
-        -- Show 3D model if we have a displayID, otherwise show icon
+        -- Model or icon
         if pet.displayID and pet.displayID > 0 then
             row.model:SetDisplayInfo(pet.displayID)
             row.model:Show()
@@ -307,43 +401,121 @@ local function RenderPanel()
             row.model:Hide()
         end
 
-        -- Set up buttons if pet is in a slot
+        -- Ability formatting - single column list
+        local abilities = type(pet.abilities) == "table" and pet.abilities or {}
+        local abilitiesText = ""
+        for _, ability in ipairs(abilities) do
+            local abilityName = type(ability) == "table" and ability.name or tostring(ability)
+            abilitiesText = abilitiesText .. "• " .. abilityName .. "\n"
+        end
+        
+        if row.abilitiesList then 
+            row.abilitiesList:SetText(abilitiesText)
+        end
+        
+        -- Show/hide abilities header based on whether there are abilities
+        if row.abilitiesHeader then
+            if #abilities > 0 then
+                row.abilitiesHeader:Show()
+                row.abilitiesList:Show()
+            else
+                row.abilitiesHeader:Hide()
+                row.abilitiesList:Hide()
+            end
+        end
+
+        -- Text block
+        local exoticLabel = pet.isExotic and " |cffff8800[Exotic]|r" or ""
+        local familyText = pet.familyName and ("Family: " .. pet.familyName) or "Family: ?"
+        local specText = pet.specName and ("Spec: " .. pet.specName) or "Spec: ?"
+        row.text:SetText(string.format(
+            "Slot %d: %s%s\nDisplayID: %d\n%s\n%s",
+            pet.slotID or 0,
+            pet.name or "?",
+            exoticLabel,
+            pet.displayID or 0,
+            familyText,
+            specText
+        ))
+
+        -- Highlight duplicates
+        local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
+        if #groups[key] > 1 then
+            row.text:SetTextColor(1, 0.6, 0.6)
+            row.bg:SetColorTexture(0.35, 0, 0, 0.35)
+        else
+            row.text:SetTextColor(1, 1, 1)
+            row.bg:SetColorTexture(0, 0, 0, 0.25)
+        end
+
+        -- Button setup
         if pet.slotID and pet.slotID > 0 then
-            -- Make Active button - find first available active slot (1-5) or use slot 1
+            -- Make Active button
             row.makeActive:SetScript("OnClick", function()
                 if C_StableInfo and C_StableInfo.SetPetSlot then
-                    -- Find first available slot in 1-5
-                    local targetSlot = nil
-                    for slot = 1, 5 do
-                        local occupied = false
-                        for _, p in ipairs(stablePets) do
-                            if p.slotID == slot then
-                                occupied = true
-                                break
-                            end
-                        end
-                        if not occupied then
-                            targetSlot = slot
+                    local slot1Pet = nil
+                    for _, p in ipairs(stablePets) do
+                        if p.slotID == 1 then
+                            slot1Pet = p
                             break
                         end
                     end
-                    -- If no free slot found, use slot 1 (replace current active)
-                    if not targetSlot then
-                        targetSlot = 1
+                    
+                    if slot1Pet then
+                        local displacementSlot = nil
+                        for slot = 2, 5 do
+                            local occupied = false
+                            for _, p in ipairs(stablePets) do
+                                if p.slotID == slot then
+                                    occupied = true
+                                    break
+                                end
+                            end
+                            if not occupied then
+                                displacementSlot = slot
+                                break
+                            end
+                        end
+                        if not displacementSlot then
+                            for slot = 7, 205 do
+                                local occupied = false
+                                for _, p in ipairs(stablePets) do
+                                    if p.slotID == slot then
+                                        occupied = true
+                                        break
+                                    end
+                                end
+                                if not occupied then
+                                    displacementSlot = slot
+                                    break
+                                end
+                            end
+                        end
+                        
+                        if displacementSlot then
+                            C_StableInfo.SetPetSlot(1, displacementSlot)
+                            C_Timer.After(0.1, function()
+                                C_StableInfo.SetPetSlot(pet.slotID, 1)
+                                C_Timer.After(0.2, UpdatePanel)
+                            end)
+                        else
+                            print("|cFFFF0000No available slots to displace pet from slot 1!|r")
+                        end
+                    else
+                        C_StableInfo.SetPetSlot(pet.slotID, 1)
+                        C_Timer.After(0.2, UpdatePanel)
                     end
-                    C_StableInfo.SetPetSlot(pet.slotID, targetSlot)
-                    C_Timer.After(0.2, UpdatePanel)
                 else
                     print("|cFFFF0000C_StableInfo.SetPetSlot not available.|r")
                 end
             end)
-            -- Only show Make Active if pet is NOT already in slots 1-5
             if pet.slotID >= 1 and pet.slotID <= 5 then
                 row.makeActive:Hide()
             else
                 row.makeActive:Show()
             end
-            -- Companion button - set as companion pet (slot 6)
+            
+            -- Companion button
             row.companion:SetScript("OnClick", function()
                 if C_StableInfo and C_StableInfo.SetPetSlot then
                     C_StableInfo.SetPetSlot(pet.slotID, 6)
@@ -352,16 +524,15 @@ local function RenderPanel()
                     print("|cFFFF0000C_StableInfo.SetPetSlot not available.|r")
                 end
             end)
-            -- Don't show Companion button if already in slot 6
             if pet.slotID == 6 then
                 row.companion:Hide()
             else
                 row.companion:Show()
             end
-            -- Stable button - move to first available stable slot (7-205)
+            
+            -- Stable button
             row.stable:SetScript("OnClick", function()
                 if C_StableInfo and C_StableInfo.SetPetSlot then
-                    -- Find first available stable slot (7-205)
                     local targetSlot = nil
                     for slot = 7, 205 do
                         local occupied = false
@@ -386,13 +557,13 @@ local function RenderPanel()
                     print("|cFFFF0000C_StableInfo.SetPetSlot not available.|r")
                 end
             end)
-            -- Only show Stable button if pet is in active/companion slots (1-6)
             if pet.slotID >= 1 and pet.slotID <= 6 then
                 row.stable:Show()
             else
                 row.stable:Hide()
             end
-            -- Release button - always show
+            
+            -- Release button
             row.release:SetScript("OnClick", function()
                 if StableFrame and StableFrame.OnPetSelected and StableFrame.ReleasePetButton then
                     StableFrame:OnPetSelected(pet)
@@ -412,41 +583,29 @@ local function RenderPanel()
             row.release:Hide()
         end
 
-        -- Set row text (add Family and Spec info)
-        local exoticLabel = pet.isExotic and " |cffff8800[Exotic]|r" or ""
-        local familyText = pet.familyName and ("Family: " .. tostring(pet.familyName)) or "Family: ?"
-        local specText = pet.specName and ("Spec: " .. tostring(pet.specName)) or "Spec: ?"
-        row.text:SetText(string.format(
-            "Slot %d: %s%s\nDisplayID: %d\n%s\n%s",
-            pet.slotID or 0,
-            pet.name or "?",
-            exoticLabel,
-            pet.displayID or 0,
-            familyText,
-            specText
-        ))
-
-        -- Highlight duplicates in red
-        local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
-        if #groups[key] > 1 then
-            row.text:SetTextColor(1, 0.6, 0.6)
-            row.bg:SetColorTexture(0.35, 0, 0, 0.35)
-        else
-            row.text:SetTextColor(1, 1, 1)
-            row.bg:SetColorTexture(0, 0, 0, 0.25)
-        end
-
         row:Show()
     end
 
     -- Hide unused rows
-    for i = #filteredPets+1, #rows do
+    for i = #filteredPets + 1, #rows do
         rows[i]:Hide()
+        -- Also hide all child elements
+        if rows[i].model then rows[i].model:Hide() end
+        if rows[i].icon then rows[i].icon:Hide() end
+        if rows[i].text then rows[i].text:SetText("") end
+        if rows[i].abilitiesHeader then rows[i].abilitiesHeader:Hide() end
+        if rows[i].abilitiesList then 
+            rows[i].abilitiesList:Hide()
+            rows[i].abilitiesList:SetText("")
+        end
+        if rows[i].makeActive then rows[i].makeActive:Hide() end
+        if rows[i].companion then rows[i].companion:Hide() end
+        if rows[i].stable then rows[i].stable:Hide() end
+        if rows[i].release then rows[i].release:Hide() end
     end
-    -- Set content height to fit all rows (row count = ceil(total/colCount))
-    local rowTotal = math.ceil(#filteredPets / colCount)
-    local newHeight = math.max(rowTotal * ROW_HEIGHT + 10, 100)
-    content:SetHeight(newHeight)
+    
+    -- Resize content
+    content:SetHeight(math.max(rowTotal * ROW_HEIGHT + 10, 100))
 end
 
 ------------------------------------------------------------
@@ -454,7 +613,7 @@ end
 ------------------------------------------------------------
 local function BuildPanel()
     if panel then 
-        return -- Panel already exists
+        return
     end
     
     if not StableFrame then 
@@ -475,25 +634,24 @@ local function BuildPanel()
     panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
     panel:SetResizable(true)
     if panel.SetResizeBounds then
-        panel:SetResizeBounds(300, 200, 1200, 1000)
+        panel:SetResizeBounds(300, 200, 4800, 1000)
     end
-    -- Add a resize handle in the bottom right corner
-    if not panel.resizeButton then
-        panel.resizeButton = CreateFrame("Button", nil, panel)
-        panel.resizeButton:SetSize(16, 16)
-        panel.resizeButton:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -2, 2)
-        panel.resizeButton:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-        panel.resizeButton:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-        panel.resizeButton:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-        panel.resizeButton:SetScript("OnMouseDown", function(self, button)
-            if button == "LeftButton" then
-                self:GetParent():StartSizing("BOTTOMRIGHT")
-            end
-        end)
-        panel.resizeButton:SetScript("OnMouseUp", function(self, button)
-            self:GetParent():StopMovingOrSizing()
-        end)
-    end
+    
+    -- Add resize handle
+    panel.resizeButton = CreateFrame("Button", nil, panel)
+    panel.resizeButton:SetSize(16, 16)
+    panel.resizeButton:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -2, 2)
+    panel.resizeButton:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    panel.resizeButton:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    panel.resizeButton:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    panel.resizeButton:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            self:GetParent():StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    panel.resizeButton:SetScript("OnMouseUp", function(self, button)
+        self:GetParent():StopMovingOrSizing()
+    end)
 
     -- Background
     panel.border = CreateFrame("Frame", nil, panel, "BackdropTemplate")
@@ -507,14 +665,23 @@ local function BuildPanel()
     panel.border:SetBackdropColor(0,0,0,0.7)
     panel.border:SetFrameLevel(panel:GetFrameLevel() - 1)
 
-    -- Title (centered at top) - created after border so it renders on top
+    -- Close button
+    panel.closeButton = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+    panel.closeButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -5, -5)
+    panel.closeButton:SetSize(20, 20)
+    panel.closeButton:SetFrameLevel(panel:GetFrameLevel() + 10)
+    panel.closeButton:SetScript("OnClick", function()
+        panel:Hide()
+    end)
+
+    -- Title
     panel.title = panel:CreateFontString(nil,"OVERLAY","GameFontNormalLarge")
     panel.title:SetPoint("TOP", panel, "TOP", 0, -10)
     panel.title:SetText("Pet Stable Management")
     panel.title:SetTextColor(1, 0.82, 0)
     panel.title:SetDrawLayer("OVERLAY", 7)
 
-    -- Search box (centered below title)
+    -- Search box
     panel.searchBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
     panel.searchBox:SetSize(130, 22)
     panel.searchBox:SetPoint("TOP", panel.title, "BOTTOM", 0, -15)
@@ -568,6 +735,7 @@ local function BuildPanel()
             C_Timer.After(0.1, UpdatePanel)
         end
         UIDropDownMenu_AddButton(info)
+
         for _, spec in ipairs(specList) do
             local info = UIDropDownMenu_CreateInfo()
             info.text = "  " .. spec
@@ -594,6 +762,7 @@ local function BuildPanel()
             UIDropDownMenu_AddButton(info)
         end
     end)
+
     if not next(selectedSpecs) then
         UIDropDownMenu_SetText(panel.specDrop, "All Specs")
     else
@@ -618,19 +787,20 @@ local function BuildPanel()
             C_Timer.After(0.1, UpdatePanel)
         end
         UIDropDownMenu_AddButton(info)
-        for _, fam in ipairs(familyList) do
+
+        for _, family in ipairs(familyList) do
             local info = UIDropDownMenu_CreateInfo()
-            info.text = "  " .. fam
-            info.value = fam
-            info.checked = selectedFamilies[fam] or false
+            info.text = "  " .. family
+            info.value = family
+            info.checked = selectedFamilies[family] or false
             info.keepShownOnClick = true
             info.isNotRadio = true
             info.minWidth = 60
             info.func = function(_, _, _, checked)
                 if checked then
-                    selectedFamilies[fam] = true
+                    selectedFamilies[family] = true
                 else
-                    selectedFamilies[fam] = nil
+                    selectedFamilies[family] = nil
                 end
                 if not next(selectedFamilies) then
                     UIDropDownMenu_SetText(panel.familyDrop, "All Families")
@@ -644,6 +814,7 @@ local function BuildPanel()
             UIDropDownMenu_AddButton(info)
         end
     end)
+
     if not next(selectedFamilies) then
         UIDropDownMenu_SetText(panel.familyDrop, "All Families")
     else
@@ -652,7 +823,7 @@ local function BuildPanel()
         UIDropDownMenu_SetText(panel.familyDrop, table.concat(t, ", "))
     end
 
-    -- Sort by Slot button (right side, aligned with exotic checkbox)
+    -- Sort by Slot button
     panel.sortSlotButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.sortSlotButton:SetSize(130, 22)
     panel.sortSlotButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -35, -85)
@@ -663,7 +834,7 @@ local function BuildPanel()
         UpdatePanel()
     end)
 
-    -- Sort by DisplayID button (right side, below sort by slot)
+    -- Sort by DisplayID button
     panel.sortDisplayIDButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.sortDisplayIDButton:SetSize(130, 22)
     panel.sortDisplayIDButton:SetPoint("TOPRIGHT", panel.sortSlotButton, "BOTTOMRIGHT", 0, -15)
@@ -674,31 +845,37 @@ local function BuildPanel()
         UpdatePanel()
     end)
 
-    -- Create the scroll frame (moved down to give more space for filters)
+    -- Create scroll frame
     scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -150)
-    scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 35)  -- Leave space for stats
+    scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 35)
     
-    -- Create the content frame
+    -- Create content frame
     content = CreateFrame("Frame", nil, scrollFrame)
     content:SetSize(scrollFrame:GetWidth() - 10, 500)
     scrollFrame:SetScrollChild(content)
     
-    -- Statistics text at bottom
+    -- Statistics text
     panel.statsText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     panel.statsText:SetPoint("BOTTOM", panel, "BOTTOM", 0, 10)
     panel.statsText:SetText("Showing: 0 pets  |  Duplicates: 0 pets (0 groups)")
-    panel.statsText:SetTextColor(1, 0.82, 0)  -- Bright yellow
+    panel.statsText:SetTextColor(1, 0.82, 0)
     panel.statsText:SetDrawLayer("OVERLAY", 7)
     
-    -- Dynamically resize content and rows when the panel is resized
+    -- Handle panel resize
     panel:SetScript("OnSizeChanged", function(self, width, height)
         if not scrollFrame or not content then return end
+
         scrollFrame:SetWidth(width - 20)
+        scrollFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -150)
         scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 35)
+
         content:SetWidth(scrollFrame:GetWidth() - 10)
-        -- Re-render panel to update columns
-        RenderPanel()
+        content:ClearAllPoints()
+        content:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT")
+        content:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT")
+
+        C_Timer.After(0.05, RenderPanel)
     end)
 end
 
@@ -712,8 +889,8 @@ UpdatePanel = function()
     
     if panel then
         panel:Show()
-        if panel.sortButton then
-            panel.sortButton:SetText(sortByDisplayID and "Sorted by DisplayID" or "Sort by DisplayID")
+        if panel.sortDisplayIDButton then
+            panel.sortDisplayIDButton:SetText(sortByDisplayID and "Sorted by DisplayID" or "Sort by DisplayID")
         end
         if panel.sortSlotButton then
             panel.sortSlotButton:SetText(sortBySlot and "Sorted by Slot" or "Sort by Slot")
@@ -736,11 +913,10 @@ f:RegisterEvent("PET_STABLE_UPDATE")
 f:RegisterEvent("PET_STABLE_CLOSED")
 f:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
-        -- removed print
+        -- Addon loaded
     elseif event == "PET_STABLE_SHOW" then
         C_Timer.After(0.3, function()
             UpdatePanel()
-            -- Hook release button
             if StableFrame and StableFrame.ReleasePetButton and not StableFrame.ReleasePetButton.petdup_hooked then
                 StableFrame.ReleasePetButton.petdup_hooked = true
                 hooksecurefunc(StableFrame.ReleasePetButton, "Click", function()
