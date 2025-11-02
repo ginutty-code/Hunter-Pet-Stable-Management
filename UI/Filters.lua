@@ -3,10 +3,11 @@
 
 local addonName = "PetStableManagement"
 
+-- Initialize global namespace
 _G.PSM = _G.PSM or {}
 local PSM = _G.PSM
 
-local function ApplyElvUIDropdownSkin(dropdown)
+-- Helper function to apply ElvUI skin to dropdowns properly
 local function ApplyElvUIDropdownSkin(dropdown)
     if not ElvUI or not ElvUI[1] or not ElvUI[1]:GetModule("Skins") then return end
     
