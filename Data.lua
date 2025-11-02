@@ -8,7 +8,7 @@ local PSM = _G.PSM
 
 PSM.Data = {}
 
-local function DeepCopyPet(pet)
+-- Deep copy a pet table
 local function DeepCopyPet(pet)
     if type(pet) ~= "table" then return pet end
     local copy = {}
