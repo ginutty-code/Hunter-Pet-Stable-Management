@@ -3,6 +3,7 @@
 
 local addonName = "PetStableManagement"
 
+-- Initialize global namespace
 _G.PSM = _G.PSM or {}
 local PSM = _G.PSM
 
@@ -83,7 +84,7 @@ function PSM.UI:BuildPanel()
     panel.border:SetBackdropColor(0, 0, 0, 0.7)
     panel.border:SetFrameLevel(panel:GetFrameLevel() - 1)
 
-    -- Close button
+-- Close button
     panel.closeButton = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
     panel.closeButton:SetPoint("TOPRIGHT", -5, -5)
     panel.closeButton:SetSize(20, 20)
