@@ -3,6 +3,7 @@
 
 local addonName = "PetStableManagement"
 
+-- Initialize global namespace
 _G.PSM = _G.PSM or {}
 local PSM = _G.PSM
 
@@ -12,6 +13,7 @@ function PSM.Export:EscapeCSVField(field)
     if not field then return "" end
 
     local str = tostring(field)
+    -- If field contains comma, quote, or newline, wrap in quotes and escape quotes
     if str:find('[,"\n]') then
         str = '"' .. str:gsub('"', '""') .. '"'
     end
