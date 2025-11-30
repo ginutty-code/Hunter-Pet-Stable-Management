@@ -59,6 +59,29 @@ PSM.Config = {
         DUPLICATE = {1, 0.6, 0.6},
         BACKGROUND = {0, 0, 0, 0.25},
         BACKGROUND_DUPLICATE = {0.35, 0, 0, 0.35},
+        BACKGROUND_OWNED_SINGLE = {0, 0.35, 0, 0.35},
+    },
+
+    -- Excluded display IDs (models that don't render properly)
+    EXCLUDED_DISPLAY_IDS = {
+        -- Add display IDs here that should be filtered out
+        -- Example: [12345] = true,
+        -- incorrect or test models
+        [0]=true,[116308] = true, [21636] = true,[328] = true, [4628] = true,[43798] = true,
+        [68398] = true,[33663] = true, [77552] = true,[52600] = true, [115646]=true,
+        [6544]=true,[68289]=true,[68291]=true,[68290]=true,[6909]=true,[8841]=true,
+        [68300]=true,[68292]=true, [59465]=true,[68294]=true,[6544]=true,[68296]=true, 
+        [92661]=true,[96087]=true,[59540]=true,[52418]=true, [78649]=true, [9033]=true,
+        [40029]=true,[53038]=true,[48714]=true,[90396]=true,         
+    },
+
+    -- Excluded NPC IDs (NPCs that should be filtered out)
+    EXCLUDED_NPC_IDS = {
+        -- Add NPC IDs here that should be filtered out
+        -- Example: [12345] = true,
+        -- incorrect or test NPCs
+        [160975]=true, [156745]=true,[156744]=true, [156765]=true,[74032]=true,
+       
     },
 
     -- Messages

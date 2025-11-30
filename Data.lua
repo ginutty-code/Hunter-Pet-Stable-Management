@@ -61,6 +61,8 @@ function PSM.Data:SaveSettings()
         duplicatesOnlyFilter = PSM.state.duplicatesOnlyFilter or false,
         selectedSpecs = DeepCopyPet(PSM.state.selectedSpecs) or {},
         selectedFamilies = DeepCopyPet(PSM.state.selectedFamilies) or {},
+        selectedModelsFamilies = DeepCopyPet(PSM.state.selectedModelsFamilies) or {},
+        favoriteModels = DeepCopyPet(PSM.state.favoriteModels) or {},
         minimapButton = PetStableManagementDB.settings and PetStableManagementDB.settings.minimapButton or {
             hide = false,
             minimapPos = 220,
@@ -98,9 +100,25 @@ function PSM.Data:LoadPersistentDataForDisplay()
         PSM.state.duplicatesOnlyFilter = PetStableManagementDB.settings.duplicatesOnlyFilter or false
         PSM.state.selectedSpecs = DeepCopyPet(PetStableManagementDB.settings.selectedSpecs) or {}
         PSM.state.selectedFamilies = DeepCopyPet(PetStableManagementDB.settings.selectedFamilies) or {}
+        PSM.state.selectedModelsFamilies = DeepCopyPet(PetStableManagementDB.settings.selectedModelsFamilies) or {}
+        PSM.state.favoriteModels = DeepCopyPet(PetStableManagementDB.settings.favoriteModels) or {}
     end
 
     return true
+end
+
+function PSM.Data:LoadSettingsOnly()
+    -- Load settings independently of pet data
+    if PetStableManagementDB and PetStableManagementDB.settings then
+        PSM.state.sortByDisplayID = PetStableManagementDB.settings.sortByDisplayID or false
+        PSM.state.sortBySlot = PetStableManagementDB.settings.sortBySlot or false
+        PSM.state.exoticFilter = PetStableManagementDB.settings.exoticFilter or false
+        PSM.state.duplicatesOnlyFilter = PetStableManagementDB.settings.duplicatesOnlyFilter or false
+        PSM.state.selectedSpecs = DeepCopyPet(PetStableManagementDB.settings.selectedSpecs) or {}
+        PSM.state.selectedFamilies = DeepCopyPet(PetStableManagementDB.settings.selectedFamilies) or {}
+        PSM.state.selectedModelsFamilies = DeepCopyPet(PetStableManagementDB.settings.selectedModelsFamilies) or {}
+        PSM.state.favoriteModels = DeepCopyPet(PetStableManagementDB.settings.favoriteModels) or {}
+    end
 end
 
 function PSM.Data:GetFormattedTimestamp()

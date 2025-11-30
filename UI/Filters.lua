@@ -67,6 +67,7 @@ end
 function PSM.UI:BuildFilters(panel)
     -- Exotic filter
     panel.exoticCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+    panel.exoticCheck:SetSize(25, 25)
     panel.exoticCheck:SetPoint("TOPLEFT", 5, -85)
     PSM.UI:ApplyElvUISkin(panel.exoticCheck, "checkbox")
     panel.exoticCheck.text = panel.exoticCheck:CreateFontString(nil, "OVERLAY")
@@ -86,6 +87,7 @@ function PSM.UI:BuildFilters(panel)
 
     -- Duplicates filter
     panel.duplicatesCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+    panel.duplicatesCheck:SetSize(25, 25)
     panel.duplicatesCheck:SetPoint("TOPLEFT", panel.exoticCheck, "TOPRIGHT", 120, 0)
     PSM.UI:ApplyElvUISkin(panel.duplicatesCheck, "checkbox")
     panel.duplicatesCheck.text = panel.duplicatesCheck:CreateFontString(nil, "OVERLAY")
@@ -100,7 +102,7 @@ function PSM.UI:BuildFilters(panel)
 
     -- Spec dropdown
     panel.specDrop = CreateFrame("Frame", "PetDupSpecDrop", panel, "UIDropDownMenuTemplate")
-    panel.specDrop:SetPoint("TOPLEFT", panel.exoticCheck, "BOTTOMLEFT", -15, 5)
+    panel.specDrop:SetPoint("TOPLEFT", panel.exoticCheck, "BOTTOMLEFT", -15, 2)
     UIDropDownMenu_SetWidth(panel.specDrop, 100)
     
     -- Apply ElvUI skin with proper positioning
@@ -150,7 +152,7 @@ function PSM.UI:BuildFilters(panel)
 
     -- Family dropdown
     panel.familyDrop = CreateFrame("Frame", "PetDupFamilyDrop", panel, "UIDropDownMenuTemplate")
-    panel.familyDrop:SetPoint("TOPLEFT", panel.duplicatesCheck, "BOTTOMLEFT", -15, 5)
+    panel.familyDrop:SetPoint("TOPLEFT", panel.duplicatesCheck, "BOTTOMLEFT", -15, 2)
     UIDropDownMenu_SetWidth(panel.familyDrop, 100)
     
     -- Apply ElvUI skin with proper positioning
@@ -239,7 +241,7 @@ end
 function PSM.UI:BuildSortButtons(panel)
     panel.sortSlotButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.sortSlotButton:SetSize(PSM.Config.BUTTON_WIDTH, PSM.Config.BUTTON_HEIGHT)
-    panel.sortSlotButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -38, -90)
+    panel.sortSlotButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -38, -80)
     panel.sortSlotButton:SetText("Sort by Slot")
     panel.sortSlotButton:SetNormalFontObject("GameFontNormalSmall")
     PSM.UI:ApplyElvUISkin(panel.sortSlotButton, "button")

@@ -42,6 +42,9 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
                 }
             end
 
+            -- Load settings (including favorites) when addon starts
+            PSM.Data:LoadSettingsOnly()
+
             PSM.Minimap:CreateButton()
             print(PSM.Config.MESSAGES.ADDON_LOADED)
 

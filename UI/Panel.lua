@@ -18,7 +18,7 @@ function PSM.UI:BuildPanel()
     local panel = CreateFrame("Frame", "PetStableManagementPanel", UIParent)
     panel:SetSize(PSM.Config.PANEL_WIDTH, PSM.Config.PANEL_HEIGHT)
     panel:SetPoint("TOPLEFT", StableFrame, "TOPRIGHT", 0, 0)
-    panel:SetFrameStrata("MEDIUM")
+    panel:SetFrameStrata("HIGH")
     panel:SetFrameLevel(50)
     panel:SetToplevel(true)
     panel:SetClampedToScreen(true)
@@ -81,7 +81,7 @@ function PSM.UI:BuildPanel()
         tile = true, tileSize = 30, edgeSize = 5,
         insets = {left=4, right=4, top=4, bottom=4}
     })
-    panel.border:SetBackdropColor(0, 0, 0, 0.7)
+    panel.border:SetBackdropColor(0, 0, 0, 0.8)
     panel.border:SetFrameLevel(panel:GetFrameLevel() - 1)
 
 -- Close button
@@ -99,10 +99,8 @@ function PSM.UI:BuildPanel()
         if not PSM.state.isStableOpen then
             -- Save filter settings for persistence when not at stable
             PSM.Data:SaveSettings()
-            PSM.C_Timer.After(0.1, function()
-                PSM.Data:ClearMemory()
-                PSM.Data:ClearUIRows()
-            end)
+            PSM.Data:ClearMemory()
+            PSM.Data:ClearUIRows()
         end
     end)
     
@@ -123,7 +121,7 @@ function PSM.UI:BuildPanel()
     panel.isMaximized = false
     panel.maximizeButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.maximizeButton:SetPoint("TOPRIGHT", panel.closeButton, "TOPLEFT", -2, 0)
-    panel.maximizeButton:SetSize(70, 20)
+    panel.maximizeButton:SetSize(70, 25)
     panel.maximizeButton:SetText("Maximize")
     panel.maximizeButton:SetNormalFontObject("GameFontNormalSmall")
     PSM.UI:ApplyElvUISkin(panel.maximizeButton, "button")
@@ -131,7 +129,7 @@ function PSM.UI:BuildPanel()
     -- Export button
     panel.exportButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.exportButton:SetPoint("TOPLEFT", 10, -5)
-    panel.exportButton:SetSize(50, 20)
+    panel.exportButton:SetSize(50, 25)
     panel.exportButton:SetText("Export")
     panel.exportButton:SetNormalFontObject("GameFontNormalSmall")
     panel.exportButton:SetScript("OnClick", function()
@@ -166,17 +164,29 @@ function PSM.UI:BuildPanel()
         PSM.C_Timer.After(0.01, function() PSM.UI:RenderPanel() end)
     end)
 
+-- Pet Models button
+panel.modelsButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+panel.modelsButton:SetPoint("TOPLEFT", panel.exportButton, "TOPRIGHT", 5, 0)
+panel.modelsButton:SetSize(70, 25)
+panel.modelsButton:SetText("Pet Models")
+panel.modelsButton:SetNormalFontObject("GameFontNormalSmall")
+panel.modelsButton:SetScript("OnClick", function()
+    PSM.ModelsPanel:Toggle()
+end)
+PSM.UI:ApplyElvUISkin(panel.modelsButton, "button")
+
+
     -- Title
     panel.title = panel:CreateFontString(nil, "OVERLAY")
-    panel.title:SetFont("Fonts\\FRIZQT__.TTF", PSM.Config.FONT_SIZES.TITLE, "OUTLINE")
-    panel.title:SetPoint("TOP", 0, -25)
+    panel.title:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+    panel.title:SetPoint("TOP", 0, -35)
     panel.title:SetText("Pet Stable Management")
     panel.title:SetTextColor(1, 0.82, 0)
 
     -- Search box
     panel.searchBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-    panel.searchBox:SetSize(130, 22)
-    panel.searchBox:SetPoint("TOP", panel.title, "BOTTOM", 0, -15)
+    panel.searchBox:SetSize(150, 22)
+    panel.searchBox:SetPoint("TOP", panel.title, "BOTTOM", 0, -10)
     panel.searchBox:SetAutoFocus(false)
     panel.searchBox:SetText("")
     PSM.UI:ApplyElvUISkin(panel.searchBox, "editbox")
@@ -189,10 +199,6 @@ function PSM.UI:BuildPanel()
         debouncedSearch()
     end)
 
-    local searchLabel = panel:CreateFontString(nil, "OVERLAY")
-    searchLabel:SetFont("Fonts\\FRIZQT__.TTF", 10)
-    searchLabel:SetPoint("BOTTOM", panel.searchBox, "TOP", 0, 1)
-    searchLabel:SetText("Search:")
 
     -- Filters
     PSM.UI:BuildFilters(panel)
@@ -216,40 +222,64 @@ function PSM.UI:BuildPanel()
         insets = {left=4, right=4, top=4, bottom=4}
     })
     rowsFrame:SetBackdropColor(0, 0, 0, 0.1)
-    rowsFrame:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
     rowsFrame:SetFrameLevel(panel:GetFrameLevel() - 1)
 
     local content = CreateFrame("Frame", nil, scrollFrame)
     content:SetSize(scrollFrame:GetWidth() - 10, 500)
     scrollFrame:SetScrollChild(content)
-    
+
     -- Force scrollbar to always reserve space (even when hidden)
     if scrollFrame.ScrollBar then
         scrollFrame.ScrollBar:SetAlpha(1)
     end
 
+    panel.scrollOffset = 0
+
+    -- Add scroll handler for virtual scrolling
+    scrollFrame:SetScript("OnVerticalScroll", function(self, offset)
+        local newOffset = math.floor(offset / PSM.Config.ROW_HEIGHT)
+        if newOffset ~= panel.scrollOffset then
+            panel.scrollOffset = newOffset
+            PSM.C_Timer.After(0.01, function()
+                PSM.UI:UpdateVisibleRows()
+            end)
+        end
+    end)
+
     -- Stats text
     panel.statsText = panel:CreateFontString(nil, "OVERLAY")
-    panel.statsText:SetFont("Fonts\\FRIZQT__.TTF", PSM.Config.FONT_SIZES.STATS, "OUTLINE")
+    panel.statsText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     panel.statsText:SetPoint("BOTTOM", 0, 10)
     panel.statsText:SetText("Showing: 0 pets  |  Duplicates: 0 pets (0 groups)")
     panel.statsText:SetTextColor(1, 0.82, 0)
 
--- Resize handler with proper content width calculation
+-- Optimized resize handler
     panel:SetScript("OnSizeChanged", function(self, width, height)
+        -- Only recalculate if size actually changed significantly
+        local widthDiff = math.abs((PSM._lastLayoutWidth or 0) - width)
+        local heightDiff = math.abs((PSM._lastLayoutHeight or 0) - height)
+
+        if widthDiff < 10 and heightDiff < 10 then return end -- Ignore small changes
+
+        PSM._lastLayoutWidth = width
+        PSM._lastLayoutHeight = height
+
         if not scrollFrame or not content then return end
 
         scrollFrame:SetWidth(width - 40)
-        
+
         -- Use the actual scrollFrame width - it already accounts for scrollbar
         content:SetWidth(scrollFrame:GetWidth())
         content:ClearAllPoints()
         content:SetPoint("TOPLEFT")
         content:SetPoint("TOPRIGHT")
 
-        PSM.C_Timer.After(0.05, function() 
+        -- Invalidate cache to force recalculation
+        PSM._renderCache = nil
+
+        PSM.C_Timer.After(0.05, function()
             if PSM.UI and PSM.UI.RenderPanel then
-                PSM.UI:RenderPanel() 
+                PSM.UI:RenderPanel()
             end
         end)
     end)

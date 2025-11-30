@@ -1,5 +1,5 @@
 -- UI.lua
--- UI components for PetStableManagement
+-- Optimized UI components for PetStableManagement with performance improvements
 
 local addonName = "PetStableManagement"
 
@@ -8,7 +8,22 @@ _G.PSM = _G.PSM or {}
 local PSM = _G.PSM
 
 -- Load UI sub-modules
-PSM.UI = {}
+PSM.UI = PSM.UI or {}
+
+-- Performance optimization: Add utility functions
+function PSM.UI:CreatePerformanceOptimizations()
+    -- Add table hash function for cache keys
+    if not PSM.Utils.GetTableHash then
+        function PSM.Utils:GetTableHash(tbl)
+            if not tbl or not next(tbl) then return "empty" end
+            local hash = ""
+            for k, v in pairs(tbl) do
+                hash = hash .. tostring(k) .. ":" .. tostring(v) .. ","
+            end
+            return hash
+        end
+    end
+end
 
 -- ElvUI compatibility function
 function PSM.UI:ApplyElvUISkin(frame, skinType)
@@ -45,6 +60,8 @@ PSM.UI.state = PSM.UI.state or {
     duplicatesOnlyFilter = false,
     selectedSpecs = {},
     selectedFamilies = {},
+    selectedModelsFamilies = {},
+    favoriteModels = {},
     specList = {},
     familyList = {},
     isStableOpen = false,
@@ -339,16 +356,82 @@ function PSM.UI:FindAvailableStableSlot()
     return nil
 end
 
+-- PERFORMANCE OPTIMIZATION: Debounced and cached rendering
+function PSM.UI:CreateRenderCache()
+    PSM._renderCache = nil
+    PSM._renderDebounceTimer = nil
+    PSM._lastLayoutWidth = nil
+    PSM._lastLayoutHeight = nil
+end
+
+-- Cache key generator for expensive calculations
+function PSM.UI:GenerateCacheKey()
+    local searchText = PSM.state.panel and PSM.state.panel.searchBox:GetText() or ""
+    local searchLower = searchText ~= "" and PSM.Utils:NormalizeSearchText(searchText) or ""
+    
+    return string.format("%d_%s_%s_%s_%s_%s_%s",
+        #PSM.state.stablePets,
+        searchLower,
+        tostring(PSM.state.exoticFilter),
+        tostring(PSM.state.duplicatesOnlyFilter),
+        PSM.Utils:GetTableHash(PSM.state.selectedSpecs),
+        PSM.Utils:GetTableHash(PSM.state.selectedFamilies),
+        tostring(PSM.state.sortByDisplayID) .. tostring(PSM.state.sortBySlot)
+    )
+end
+
+-- Main render function with debouncing
 function PSM.UI:RenderPanel()
     if not PSM.state.panel or not PSM.state.content then
         print(PSM.Config.MESSAGES.PANEL_SHOW_FAILED)
         return
     end
 
-    local searchText = PSM.state.panel.searchBox:GetText() or ""
-    local searchLower = PSM.Utils:NormalizeSearchText(searchText)
+    -- Cancel existing debounce timer
+    if PSM._renderDebounceTimer then
+        PSM._renderDebounceTimer:Cancel()
+    end
+    
+    -- Debounce rendering to avoid excessive calls during rapid changes
+    PSM._renderDebounceTimer = PSM.C_Timer.NewTimer(PSM.Config.RENDER_DELAY or 0.01, function()
+        self:_RenderPanelImmediate()
+    end)
+end
 
-    -- Build duplicate groups from ALL pets first
+-- Immediate rendering function with caching
+function PSM.UI:_RenderPanelImmediate()
+    if not PSM.state.panel or not PSM.state.content then return end
+    
+    local cacheKey = self:GenerateCacheKey()
+    
+    -- Check cache validity
+    if PSM._renderCache and PSM._renderCache.key == cacheKey and PSM._renderCache.timestamp then
+        local age = GetTime() - PSM._renderCache.timestamp
+        if age < 0.1 then -- Cache for 100ms
+            self:_ApplyCachedRender(PSM._renderCache.data)
+            return
+        end
+    end
+    
+    -- Expensive calculation
+    local renderData = self:_CalculateRenderData()
+    
+    -- Cache the result
+    PSM._renderCache = {
+        key = cacheKey,
+        timestamp = GetTime(),
+        data = renderData
+    }
+    
+    self:_ApplyCachedRender(renderData)
+end
+
+-- Calculate all render data in one pass
+function PSM.UI:_CalculateRenderData()
+    local searchText = PSM.state.panel.searchBox:GetText() or ""
+    local searchLower = searchText ~= "" and PSM.Utils:NormalizeSearchText(searchText) or ""
+    
+    -- Build duplicate groups from ALL pets first (cached for performance)
     local allGroups = {}
     for i = 1, #PSM.state.stablePets do
         local pet = PSM.state.stablePets[i]
@@ -357,12 +440,15 @@ function PSM.UI:RenderPanel()
         table.insert(allGroups[key], pet)
     end
 
-    -- Filter pets
-    local filteredPets = {}
-    local filteredCount = 0
+    -- Pre-build filter flags for faster checks
+    local hasSpecsFilter = next(PSM.state.selectedSpecs) ~= nil
+    local hasFamilyFilter = next(PSM.state.selectedFamilies) ~= nil
+    local hasSearch = searchLower ~= ""
+    local needsDuplicatesFilter = PSM.state.duplicatesOnlyFilter
+    
+    -- Build duplicate keys if needed
     local duplicateKeys = {}
-
-    if PSM.state.duplicatesOnlyFilter then
+    if needsDuplicatesFilter then
         for key, group in pairs(allGroups) do
             if #group > 1 then
                 duplicateKeys[key] = true
@@ -370,21 +456,31 @@ function PSM.UI:RenderPanel()
         end
     end
 
+    -- Optimized filtering with early exits
+    local filteredPets = {}
+    local filteredCount = 0
+    
     for i = 1, #PSM.state.stablePets do
         local pet = PSM.state.stablePets[i]
         local skip = false
 
-        if PSM.state.exoticFilter and not pet.isExotic then skip = true end
-        if not skip and next(PSM.state.selectedSpecs) and not PSM.state.selectedSpecs[pet.specName] then skip = true end
-        if not skip and next(PSM.state.selectedFamilies) and not PSM.state.selectedFamilies[pet.familyName] then skip = true end
-
-        if not skip and PSM.state.duplicatesOnlyFilter then
+        -- Fast filter checks with early exits
+        if PSM.state.exoticFilter and not pet.isExotic then 
+            skip = true 
+        elseif hasSpecsFilter and not PSM.state.selectedSpecs[pet.specName] then 
+            skip = true 
+        elseif hasFamilyFilter and not PSM.state.selectedFamilies[pet.familyName] then 
+            skip = true 
+        elseif needsDuplicatesFilter then
             local key = tostring(pet.icon or 0) .. ":" .. tostring(pet.displayID or 0)
             if not duplicateKeys[key] then skip = true end
         end
 
-        if not skip and searchLower ~= "" then
+        -- Search filtering (only if not already filtered out)
+        if not skip and hasSearch then
             local match = false
+            
+            -- Fast field checks
             local fields = {pet.name, pet.familyName, pet.specName, tostring(pet.displayID or "")}
             for j = 1, #fields do
                 if fields[j] and tostring(fields[j]):lower():find(searchLower, 1, true) then
@@ -393,6 +489,7 @@ function PSM.UI:RenderPanel()
                 end
             end
 
+            -- Abilities search (only if no field match)
             if not match and pet.abilities then
                 for _, ability in ipairs(pet.abilities) do
                     if tostring(ability):lower():find(searchLower, 1, true) then
@@ -411,7 +508,7 @@ function PSM.UI:RenderPanel()
         end
     end
 
-    -- Sort pets
+    -- Efficient sorting (only if needed)
     if PSM.state.sortByDisplayID then
         table.sort(filteredPets, function(a, b)
             return (a.displayID or 0) < (b.displayID or 0)
@@ -439,12 +536,7 @@ function PSM.UI:RenderPanel()
         end
     end
 
-    PSM.state.panel.statsText:SetText(string.format(
-        "Showing: %d pets  |  Duplicates: %d pets (%d groups)",
-        filteredCount, duplicatePets, duplicateGroups
-    ))
-
-    -- Calculate layout using actual measured width
+    -- Calculate layout using cached measurements
     local contentWidth = PSM.state.content:GetWidth()
     if not contentWidth or contentWidth <= 0 then
         contentWidth = 470 -- fallback
@@ -456,42 +548,129 @@ function PSM.UI:RenderPanel()
     colWidth = math.max(colWidth, 400)
     local rowTotal = math.ceil(filteredCount / colCount)
 
-    -- Render rows - use allGroups for duplicate highlighting (based on ALL pets)
-    for i = 1, filteredCount do
-        local pet = filteredPets[i]
-        local row = PSM.UI.Row:EnsureRow(i)
-        if row then
-            local rowIdx = ((i - 1) % rowTotal)
-            local col = math.floor((i - 1) / rowTotal)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", PSM.state.content, "TOPLEFT",
-                4 + col * (colWidth + 8),
-                -(rowIdx) * PSM.Config.ROW_HEIGHT)
-            row:SetWidth(colWidth)
+    return {
+        filteredPets = filteredPets,
+        filteredCount = filteredCount,
+        duplicatePets = duplicatePets,
+        duplicateGroups = duplicateGroups,
+        colCount = colCount,
+        colWidth = colWidth,
+        rowTotal = rowTotal,
+        allGroups = allGroups
+    }
+end
 
-            local leftColumnWidth = math.floor(colWidth / 2)
-            local rightColumnWidth = colWidth - leftColumnWidth
-            local fixedSpace = 2 + PSM.Config.MODEL_SIZE + 6  -- left padding + model + gap to text
-            if row.text then row.text:SetWidth(leftColumnWidth - fixedSpace) end
-            if row.abilitiesHeader then row.abilitiesHeader:SetWidth(rightColumnWidth) end
-            if row.abilitiesList then row.abilitiesList:SetWidth(rightColumnWidth) end
+-- Apply cached render data to UI
+function PSM.UI:_ApplyCachedRender(renderData)
+    -- Store render data for virtual scrolling
+    PSM.state.currentRenderData = renderData
 
-            PSM.UI.Row:UpdateRow(row, pet, allGroups)
+    -- Update stats text
+    PSM.state.panel.statsText:SetText(string.format(
+        "Showing: %d pets  |  Duplicates: %d pets (%d groups)",
+        renderData.filteredCount, renderData.duplicatePets, renderData.duplicateGroups
+    ))
 
-            -- Show separator for all rows except the last one in each column
-            if row.separator then
-                row.separator:Show()
+    -- Set content height for scrolling
+    local rowHeight = PSM.Config.ROW_HEIGHT
+    PSM.state.content:SetHeight(math.max(renderData.rowTotal * rowHeight + 10, 100))
+
+    -- Reset scroll
+    PSM.state.scrollFrame:SetVerticalScroll(0)
+    PSM.state.panel.scrollOffset = 0
+
+    -- Render visible rows
+    self:UpdateVisibleRows()
+end
+
+-- Update visible rows for virtual scrolling
+function PSM.UI:UpdateVisibleRows()
+    local renderData = PSM.state.currentRenderData
+    if not renderData or not PSM.state.panel then return end
+
+    local panel = PSM.state.panel
+
+    -- Create row pool if not exists
+    if not panel.modelRows then
+        panel.modelRows = {}
+        local ROWS_PER_PAGE = 50
+        for i = 1, ROWS_PER_PAGE do
+            local row = PSM.UI.Row:EnsureRow(i)
+            if row then
+                table.insert(panel.modelRows, row)
+                row:Hide()
             end
         end
     end
 
-    -- Hide unused rows
-    for i = filteredCount + 1, #PSM.state.rows do
-        PSM.UI.Row:HideRow(i)
+    local totalItems = renderData.filteredCount
+    if totalItems == 0 then
+        for _, row in ipairs(panel.modelRows) do
+            row:Hide()
+        end
+        return
     end
 
-    -- Resize content
-    PSM.state.content:SetHeight(math.max(rowTotal * PSM.Config.ROW_HEIGHT + 10, 100))
+    local contentWidth = PSM.state.content:GetWidth()
+    if not contentWidth or contentWidth <= 0 then contentWidth = 470 end
+    local desiredColWidth = 400
+    local colCount = math.max(1, math.floor((contentWidth + 8) / (desiredColWidth + 8)))
+    local colWidth = math.floor((contentWidth - 8 * (colCount - 1)) / colCount)
+    colWidth = math.max(colWidth, 400)
+    local rowTotal = math.ceil(totalItems / colCount)
+
+    -- Calculate visible rows
+    local scrollFrameHeight = PSM.state.scrollFrame:GetHeight() or 500
+    local visibleRowCount = math.ceil(scrollFrameHeight / PSM.Config.ROW_HEIGHT) + 2
+    local startRow = math.max(1, panel.scrollOffset + 1)
+    local endRow = math.min(rowTotal, startRow + visibleRowCount - 1)
+
+    -- Calculate start and end pet indices
+    local startIndex = (startRow - 1) * colCount + 1
+    local endIndex = math.min(totalItems, endRow * colCount)
+
+    -- Hide all rows first
+    for _, row in ipairs(panel.modelRows) do
+        row:Hide()
+    end
+
+    -- Render visible rows
+    local rowIndex = 1
+    for dataIndex = startIndex, endIndex do
+        if rowIndex > #panel.modelRows then break end
+
+        local pet = renderData.filteredPets[dataIndex]
+        local row = panel.modelRows[rowIndex]
+
+        if pet and row then
+            -- Calculate position
+            local col = ((dataIndex - 1) % colCount)
+            local rowIdx = math.floor((dataIndex - 1) / colCount) + 1
+
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", PSM.state.content, "TOPLEFT",
+                4 + col * (colWidth + 8),
+                -(rowIdx - 1) * PSM.Config.ROW_HEIGHT)
+            row:SetWidth(colWidth)
+
+            local leftColumnWidth = math.floor(colWidth / 2)
+            local rightColumnWidth = colWidth - leftColumnWidth
+            local fixedSpace = 2 + PSM.Config.MODEL_SIZE + 6
+
+            if row.text then row.text:SetWidth(leftColumnWidth - fixedSpace) end
+            if row.abilitiesHeader then row.abilitiesHeader:SetWidth(rightColumnWidth) end
+            if row.abilitiesList then row.abilitiesList:SetWidth(rightColumnWidth) end
+
+            PSM.UI.Row:UpdateRow(row, pet, renderData.allGroups)
+
+            if row.separator then
+                row.separator:Show()
+            end
+
+            row:Show()
+            rowIndex = rowIndex + 1
+        end
+    end
 end
 
 function PSM.UI:UpdatePanel()
@@ -599,3 +778,42 @@ function PSM.UI:UpdateSortButtonTexts()
         PSM.state.panel.sortSlotButton:SetText(text)
     end
 end
+
+-- Optimized OnSizeChanged handler
+function PSM.UI:CreateOptimizedSizeChangedHandler()
+    if not PSM.state.panel then return end
+    
+    PSM.state.panel:SetScript("OnSizeChanged", function(self, width, height)
+        -- Only recalculate if size actually changed significantly
+        local widthDiff = math.abs((PSM._lastLayoutWidth or 0) - width)
+        local heightDiff = math.abs((PSM._lastLayoutHeight or 0) - height)
+        
+        if widthDiff < 10 and heightDiff < 10 then return end -- Ignore small changes
+        
+        PSM._lastLayoutWidth = width
+        PSM._lastLayoutHeight = height
+        
+        if not PSM.state.scrollFrame or not PSM.state.content then return end
+
+        PSM.state.scrollFrame:SetWidth(width - 40)
+        
+        -- Use the actual scrollFrame width - it already accounts for scrollbar
+        PSM.state.content:SetWidth(PSM.state.scrollFrame:GetWidth())
+        PSM.state.content:ClearAllPoints()
+        PSM.state.content:SetPoint("TOPLEFT")
+        PSM.state.content:SetPoint("TOPRIGHT")
+
+        -- Invalidate cache to force recalculation
+        PSM._renderCache = nil
+        
+        PSM.C_Timer.After(0.05, function() 
+            if PSM.UI and PSM.UI.RenderPanel then
+                PSM.UI:RenderPanel() 
+            end
+        end)
+    end)
+end
+
+-- Initialize performance optimizations
+PSM.UI:CreatePerformanceOptimizations()
+PSM.UI:CreateRenderCache()

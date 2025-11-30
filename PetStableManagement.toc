@@ -1,8 +1,8 @@
-## Interface: 110205
+## Interface: 110205, 110207, 120000 
 ## Title: Pet Stable Management
 ## Notes: Complementary pet stable management panel with advanced sorting, filtering and persistent pet data storage
 ## Author: Ginutty
-## Version: 3.0.0
+## Version: 4.0.0
 ## SavedVariables: PetStableManagementDB
 ## OptionalDeps: Blizzard_StableUI
 
@@ -14,11 +14,20 @@ Utils.lua
 # Feature modules
 Minimap.lua
 Data.lua
+PetModels.lua
+PetModelsData.lua
 Reorder.lua
 Export.lua
+Events.lua
+SlashCommands.lua
 UI.lua
+
 UI/Panel.lua
 UI/Row.lua
 UI/Filters.lua
-Events.lua
-SlashCommands.lua
+UI/PetModelsPanel.lua
+
+
+
+
+

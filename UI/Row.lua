@@ -136,7 +136,7 @@ function PSM.UI.Row:EnsureRow(i)
 
     -- Pet info text
     row.text = row:CreateFontString(nil, "OVERLAY")
-    row.text:SetFont("Fonts\\FRIZQT__.TTF", PSM.Config.FONT_SIZES.PET_TEXT)
+    row.text:SetFont("Fonts\\FRIZQT__.TTF", 10)
     row.text:SetPoint("LEFT", row.model, "RIGHT", 6, 0)
     row.text:SetJustifyH("LEFT")
     row.text:SetJustifyV("MIDDLE")
@@ -144,7 +144,7 @@ function PSM.UI.Row:EnsureRow(i)
 
     -- Abilities header
     row.abilitiesHeader = row:CreateFontString(nil, "OVERLAY")
-    row.abilitiesHeader:SetFont("Fonts\\FRIZQT__.TTF", PSM.Config.FONT_SIZES.ABILITIES_HEADER)
+    row.abilitiesHeader:SetFont("Fonts\\FRIZQT__.TTF", 10)
     row.abilitiesHeader:SetPoint("TOPLEFT", row.text, "TOPRIGHT", 0, 20)
     row.abilitiesHeader:SetText("|cFFFFD700Abilities:|r")
     row.abilitiesHeader:SetJustifyH("LEFT")
@@ -154,7 +154,7 @@ function PSM.UI.Row:EnsureRow(i)
 
     -- Abilities list
     row.abilitiesList = row:CreateFontString(nil, "OVERLAY")
-    row.abilitiesList:SetFont("Fonts\\FRIZQT__.TTF", PSM.Config.FONT_SIZES.ABILITIES_TEXT)
+    row.abilitiesList:SetFont("Fonts\\FRIZQT__.TTF", 9)
     row.abilitiesList:SetPoint("TOPLEFT", row.abilitiesHeader, "BOTTOMLEFT", 0, -2)
     row.abilitiesList:SetWidth(PSM.Config.ABILITIES_WIDTH)
     row.abilitiesList:SetJustifyH("LEFT")
@@ -333,6 +333,7 @@ function PSM.UI.Row:HideRow(i)
 
     row:Hide()
     if row.model then
+        row.model:SetDisplayInfo(0)  -- Clear 3D model to free memory
         row.model:Hide()
         row.model.isRotating = false
         RotationFrame.activeModels[row.model] = nil

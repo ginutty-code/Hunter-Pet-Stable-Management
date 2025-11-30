@@ -62,6 +62,7 @@ PSM.state = {
     duplicatesOnlyFilter = false,
     selectedSpecs = {},
     selectedFamilies = {},
+    selectedModelsFamilies = {},
     specList = {},
     familyList = {},
     isStableOpen = false,

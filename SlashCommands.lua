@@ -19,6 +19,8 @@ SlashCmdList["PETSTABLEMANAGEMENT"] = function(msg)
     elseif command == "hide" then
         PSM.Minimap:Hide()
         print("|cFFFFAA00Pet Stable Management: Minimap button hidden. Use /psm show to show it again.|r")
+    elseif command == "models" then
+        PSM.ModelsPanel:Toggle()
     else
         PSM.Minimap:TogglePanel()
     end

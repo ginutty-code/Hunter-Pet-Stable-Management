@@ -63,6 +63,7 @@ function PSM.Minimap:CreateButton()
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("Pet Stable Management", 1, 1, 1)
         GameTooltip:AddLine("Left-click to toggle panel", 0.7, 0.7, 1)
+        GameTooltip:AddLine("Right-click for menu", 0.7, 0.7, 1)
         GameTooltip:AddLine("Drag to move", 0.5, 0.5, 0.5)
         GameTooltip:Show()
     end)
@@ -122,6 +123,13 @@ function PSM.Minimap:ShowContextMenu(button)
             text = "Pet Stable Management",
             isTitle = true,
             notCheckable = true
+        },
+        {
+            text = "Load Pet Model Browser",
+            notCheckable = true,
+            func = function()
+                PSM.ModelsPanel:Toggle()
+            end
         },
         {
             text = "Hide Minimap Button",
